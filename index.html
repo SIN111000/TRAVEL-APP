@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="theme-color" content="#0f172a" />
@@ -268,6 +268,32 @@
       padding: 8px 11px; border-radius: 10px; font-size: 12px; font-weight: 800;
       text-decoration: none; min-height: 38px;
     }
+
+    /* ===== v3 新增樣式 ===== */
+    .hx-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 12px 14px; }
+    .hx-card.info { background: var(--sky-soft); border-color: #bae6fd; }
+    .hx-card.warn { background: var(--amber-soft); border-color: #fde68a; }
+    .hx-card.ok { background: var(--emerald-soft); border-color: #a7f3d0; }
+    .hx-title { font-size: 14px; font-weight: 800; }
+    .hx-sub { font-size: 12px; color: var(--text-sub); margin-top: 3px; line-height: 1.55; }
+    #b-est-card .line { font-size: 12px; padding: 3px 0; display: flex; justify-content: space-between; gap: 8px; }
+    @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+    :focus-visible { outline: 3px solid #6366f1; outline-offset: 2px; }
+
+    /* ===== v4 行程時間檢查 ===== */
+    .tp-sum { padding: 9px 14px; font-size: 12px; line-height: 1.55; border-bottom: 1px solid var(--border); }
+    .tp-sum.ok { background: var(--emerald-soft); color: #065f46; }
+    .tp-sum.warn { background: var(--amber-soft); color: #92400e; }
+    .tp-sum.bad { background: var(--rose-soft); color: #9f1239; }
+    .tp-sum ul { margin: 5px 0 0 16px; }
+    .tp-chip { font-size: 11px; color: var(--text-sub); display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
+    .tp-chip .bad { color: #be123c; font-weight: 800; }
+    .tp-chip .warn { color: #b45309; font-weight: 800; }
+    .tp-chip a { color: var(--sky); font-weight: 800; text-decoration: none; }
+
+    /* ===== v5 天氣與預備金 ===== */
+    .tp-wx { padding: 8px 14px; font-size: 12px; line-height: 1.55; background: var(--sky-soft); color: #075985; border-bottom: 1px solid #bae6fd; }
+    .tp-wx small { display: block; opacity: .8; font-size: 11px; }
   </style>
 </head>
 <body>
@@ -1141,7 +1167,7 @@
 
     const WEEKDAYS = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
     const STORAGE_KEY = 'mobile_travel_app_v2';
-    const WEATHER_KEY = 'mobile_travel_wx_v2';
+    const WEATHER_KEY = 'mobile_travel_wx_v3';
 
     let state = null;
     let isWizardMode = false;
@@ -1429,8 +1455,8 @@
       document.getElementById('home-kpi-pax').textContent = `${state.adults}大${state.children}小 · ${rooms}間房`;
       document.getElementById('home-kpi-budget').textContent = `NT$ ${b.grandTotal.toLocaleString()}`;
 
-      const fDone = q.flight !== '' && Number(q.flight) > 0;
-      const hDone = b.isSplit || (q.hotelNight !== '' && Number(q.hotelNight) > 0);
+      const fDone = q.flight !== '' && Number(q.flight) > 0 && !q.flightEst;
+      const hDone = b.isSplit ? !b.hotelEst : (q.hotelNight !== '' && Number(q.hotelNight) > 0 && !q.hotelEst);
       const tDone = Number(q.transportPP) > 0;
       const itin = getItinerary();
       const iDone = itin.length > 0;
@@ -1814,7 +1840,7 @@
           <article class="feed-day">
             <div class="feed-day-top ${day.isMove ? 'move-day' : ''}">
               <div class="row-between">
-                <span style="font-size: 11px; color: #93c5fd; font-weight: 800;">DAY ${dIdx + 1} · ${day.items.length} 個節點</span>
+                <span style="font-size: 11px; color: #93c5fd; font-weight: 800;">DAY ${dIdx + 1} · ${(() => { const iso = shiftDate(state.startDate, dIdx); const d = new Date(iso + 'T00:00:00'); return (d.getMonth() + 1) + '/' + d.getDate() + '（' + WEEKDAYS[d.getDay()].slice(1) + '）' + (iso === new Date().toLocaleDateString('sv-SE') ? ' · 今天' : ''); })()} · ${day.items.length} 個節點</span>
                 <div class="row-wrap">
                   ${dIdx > 0 ? `<button type="button" class="m-btn m-btn-xs btn-sky" data-action="copy-prev-day" data-day="${dIdx}">📋 複製前一天</button>` : ''}
                   <button type="button" class="m-btn m-btn-xs btn-green" data-action="open-itin-edit" data-day="${dIdx}" data-idx="-1" data-period="morning">＋ 加景點</button>
@@ -2157,7 +2183,7 @@
         const geo = await fetchJsonWithTimeout(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(dest.cityEn)}&count=5&language=en&format=json`, 7000);
         const place = (geo.results || []).find(r => r.country_code === (dest.country === 'CN' ? 'CN' : 'JP')) || (geo.results || [])[0];
         if (!place) throw new Error('找不到座標');
-        const wx = await fetchJsonWithTimeout(`https://api.open-meteo.com/v1/forecast?latitude=${place.latitude}&longitude=${place.longitude}&current=temperature_2m&daily=temperature_2m_max,temperature_2m_min&forecast_days=5&timezone=auto`, 7000);
+        const wx = await fetchJsonWithTimeout(`https://api.open-meteo.com/v1/forecast?latitude=${place.latitude}&longitude=${place.longitude}&current=temperature_2m&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&forecast_days=16&timezone=auto`, 7000);
         const payload = { temp: wx.current?.temperature_2m ?? 15, daily: wx.daily || { time: [] }, ts: Date.now() };
         cache[dest.id] = payload;
         try { localStorage.setItem(WEATHER_KEY, JSON.stringify(cache)); } catch (e) {}
@@ -2545,6 +2571,598 @@
       switchView(state.tab || 'home');
       if (navigator.onLine) syncRates(true);
     });
+  </script>
+
+  <script>
+  /* ===== v3 增強模組（覆寫並擴充上方原有函式；先確認資料與預算邏輯） ===== */
+  (function () {
+    'use strict';
+    // 內建估算價的標示日期：這是「本版編入日」，並非即時報價或逐項查證日。請在實際查價後改填你的實查價。
+    const PRICE_STAMP = '2026-11-22';
+    const STALE_DAYS = 30;
+    const $ = id => document.getElementById(id);
+    const fmt = n => Number(n || 0).toLocaleString();
+    const clone = o => JSON.parse(JSON.stringify(o));
+    const todayIso = () => new Date().toLocaleDateString('sv-SE');
+    const dayDiff = (a, b) => Math.round((new Date(a + 'T00:00:00') - new Date(b + 'T00:00:00')) / 86400000);
+    const md = iso => { const d = new Date(iso + 'T00:00:00'); return `${d.getMonth() + 1}/${d.getDate()}（${WEEKDAYS[d.getDay()].slice(1)}）`; };
+    const stamp = PRICE_STAMP.replace(/-/g, '/');
+
+    // ---------- 1. 預算：區分「估算」與「我填的實查價」，支援僅用實查價模式 ----------
+    const _calc = calcBudget;
+    calcBudget = function () {
+      const b = _calc(), q = b.q;
+      const fFilled = q.flight !== '' && Number(q.flight) > 0;
+      b.flightEst = !fFilled || !!q.flightEst;
+      if (b.isSplit) b.hotelEst = q.splitLegs.some(l => l.est !== false);
+      else { const hf = q.hotelNight !== '' && Number(q.hotelNight) > 0; b.hotelEst = !hf || !!q.hotelEst; }
+      b.missing = [];
+      if (state.manualOnly) {
+        if (b.flightEst) { b.unitFlight = 0; b.missing.push('機票'); }
+        b.totalFlight = b.unitFlight * b.pax;
+        if (b.isSplit) {
+          const one = q.splitLegs.reduce((s, l) => s + (l.est !== false ? 0 : Number(l.nights) * Number(l.pricePerNight)), 0);
+          b.totalHotel = one * b.rooms; b.unitHotelNight = Math.round(one / b.nights);
+        } else {
+          if (b.hotelEst) b.unitHotelNight = 0;
+          b.totalHotel = b.unitHotelNight * b.nights * b.rooms;
+        }
+        if (b.hotelEst) b.missing.push('住宿');
+        b.grandTotal = b.totalFlight + b.totalHotel + b.totalTransport + b.totalPkg + b.totalFood;
+        b.perPerson = Math.round(b.grandTotal / Math.max(1, b.pax));
+      }
+      const est = (b.flightEst ? b.totalFlight : 0) + (b.hotelEst ? b.totalHotel : 0);
+      b.estShare = b.grandTotal > 0 ? Math.round(est / b.grandTotal * 100) : 0;
+      return b;
+    };
+
+    function renderEstCard() {
+      const anchor = $('b-advice-card'); if (!anchor) return;
+      const b = calcBudget();
+      let c = $('b-est-card');
+      if (!c) { c = document.createElement('div'); c.id = 'b-est-card'; c.className = 'card'; anchor.parentNode.insertBefore(c, anchor); }
+      const age = dayDiff(todayIso(), PRICE_STAMP), stale = age > STALE_DAYS;
+      const man = !!state.manualOnly;
+      const fTxt = b.flightEst ? (man ? '⚠️ 尚未填實查價（目前算 0）' : `估算均價 $${fmt(b.unitFlight)}/人`) : `✓ 我的實查價 $${fmt(b.unitFlight)}/人`;
+      const hTxt = b.hotelEst ? (man ? '⚠️ 尚未填實查價（目前算 0）' : (b.isSplit ? '分段預設房價（估算）' : `估算均價 $${fmt(b.unitHotelNight)}/晚`)) : (b.isSplit ? '✓ 我填的分段房價' : `✓ 我的實查價 $${fmt(b.unitHotelNight)}/晚`);
+      c.style.background = man ? 'var(--emerald-soft)' : '#fff';
+      c.innerHTML = `
+        <div class="row-between"><strong class="hx-title">📊 價格可信度</strong>
+          <span class="pill ${man ? 'pill-green' : (b.estShare > 0 ? 'pill-amber' : 'pill-green')}">${man ? '僅用實查價' : (b.estShare > 0 ? `約 ${b.estShare}% 為估算` : '全為實查價')}</span></div>
+        <div class="line"><span>✈️ 機票</span><strong>${fTxt}</strong></div>
+        <div class="line"><span>🏨 住宿</span><strong>${hTxt}</strong></div>
+        ${man && b.missing.length ? `<div class="hx-sub" style="color:#b45309;font-weight:700;">⚠️ 尚缺${b.missing.join('、')}實查價，目前總預算偏低。</div>` : ''}
+        <div class="hx-sub">內建估算為本版（${stamp}）編入的參考值，<strong>不是即時報價</strong>${stale ? `，距今已 ${age} 天，請重新核對` : ''}。請用下方查價連結確認後填入實查價。</div>
+        <div style="margin-top:8px;">${man
+          ? '<button type="button" class="m-btn m-btn-xs btn-ghost" data-action="pm-restore">恢復估算參考</button>'
+          : '<button type="button" class="m-btn m-btn-sm btn-green m-btn-block" data-action="pm-manual">全部改為我填的實查價（清除估算）</button>'}</div>`;
+      const mini = $('b-breakdown-mini');
+      if (mini) {
+        const items = [['✈️ 來回機票', b.totalFlight, b.flightEst], ['🏨 住宿飯店', b.totalHotel, b.hotelEst], ['🚄 當地交通', b.totalTransport, false], ['🎟️ 套裝票券', b.totalPkg, false], ['🍜 餐飲雜支', b.totalFood, false]];
+        mini.innerHTML = items.map(([k, v, e]) => `<div class="row-between"><span style="color:#cbd5e1;">${k}${e ? ' <em style="color:#fcd34d;font-style:normal;font-size:11px;">估算</em>' : ''}</span><strong class="mono">NT$ ${fmt(v)}</strong></div>`).join('');
+      }
+    }
+
+    // 重新渲染時保留橫向捲動位置（原本每打一個數字，目的地與日期卡片就跳回最左邊）
+    const _rb = renderBudget;
+    renderBudget = function () {
+      const keep = [...document.querySelectorAll('#view-budget .h-scroll')].map(n => n.scrollLeft);
+      _rb();
+      renderEstCard();
+      document.querySelectorAll('#view-budget .h-scroll').forEach((n, i) => { n.scrollLeft = keep[i] || 0; });
+    };
+
+    // ---------- 2. 首頁：出發倒數 / 旅途中今日提示 / 備份提醒 ----------
+    function hasData() {
+      const rq = Object.values(state.quotes || {}).some(q => (q.flight !== '' && Number(q.flight) > 0 && !q.flightEst) || (q.hotelNight !== '' && Number(q.hotelNight) > 0 && !q.hotelEst));
+      const e = state.emg || {};
+      return rq || state.savedPlans.length > 0 || (state.customPacks || []).length > 0 || Object.values(e).some(Boolean) || Object.keys(state.packDone || {}).length > 0;
+    }
+    function renderHomeExtra() {
+      const home = $('view-home'); if (!home) return;
+      let box = $('home-extra');
+      if (!box) { box = document.createElement('div'); box.id = 'home-extra'; box.className = 'stack-10'; home.prepend(box); }
+      const { days } = getDuration();
+      const diff = dayDiff(state.startDate, todayIso());
+      let html = '';
+      if (diff > 0) {
+        html += `<div class="hx-card info"><div class="hx-title">✈️ 距離出發還有 ${diff} 天・${md(state.startDate)}</div>
+          <div class="hx-sub">${diff <= 14 ? '出發在即：確認護照/台胞證效期、入境表格、保險與行李清單，並備份一份資料。' : '時間還夠，可先用「彈性 ±3 天」比較哪天出發最省。'}</div></div>`;
+      } else if (-diff < days) {
+        const dIdx = -diff, day = getItinerary()[dIdx];
+        const n = new Date(), hhmm = String(n.getHours()).padStart(2, '0') + ':' + String(n.getMinutes()).padStart(2, '0');
+        const items = day ? day.items.filter(x => x.prio !== 'backup').slice().sort((a, b) => String(a.time).localeCompare(String(b.time))) : [];
+        const next = items.find(x => String(x.time) >= hhmm);
+        html += `<div class="hx-card ok" data-action="go-tab" data-tab="itinerary" style="cursor:pointer;"><div class="hx-title">🧭 今天是 Day ${dIdx + 1}（共 ${days} 天）</div>
+          <div class="hx-sub">${next ? `下一站：${esc(next.time)} ${esc(next.place)}` : '今天的行程都走完了，好好休息！'}　<strong>點此看今日行程 ➔</strong></div></div>`;
+      } else {
+        html += `<div class="hx-card"><div class="hx-title">🏁 這趟旅程已結束</div><div class="hx-sub">想規劃下一趟，可按「＋ 建立新旅程」。</div></div>`;
+      }
+      const last = Number(state.lastBackupAt || 0), old = !last || (Date.now() - last) > 14 * 86400000;
+      if (hasData() && old) {
+        html += `<div class="hx-card warn"><div class="hx-title">💾 建議備份一份資料</div>
+          <div class="hx-sub">你的資料只存在這支手機的瀏覽器裡。換手機、清除網站資料或長期不開啟都可能消失。${last ? `上次備份：${new Date(last).toLocaleDateString('zh-TW')}。` : '尚未備份過。'}</div>
+          <button type="button" class="m-btn m-btn-sm btn-amber m-btn-block" style="margin-top:8px;" data-action="exp-json">立即下載備份檔 (.json)</button></div>`;
+      }
+      box.innerHTML = html;
+    }
+    const _rh = renderHome;
+    renderHome = function () {
+      _rh(); renderHomeExtra();
+      const b = calcBudget(), v = $('home-kpi-budget');
+      if (v && v.previousElementSibling) v.previousElementSibling.textContent = `💰 預估總預算 · ${state.manualOnly && b.missing.length ? '尚缺' + b.missing.join('、') : (b.estShare > 0 ? '含估算 ' + b.estShare + '%' : '實查價')}`;
+    };
+
+    // ---------- 3. 比較方案：連同價格一起存，載回時完整還原 ----------
+    const _scp = saveCurrentPlan;
+    saveCurrentPlan = function () {
+      const n = state.savedPlans.length;
+      _scp();
+      if (state.savedPlans.length > n) {
+        const p = state.savedPlans[0], b = calcBudget();
+        p.quote = clone(state.quotes[b.dest.id]); p.estShare = b.estShare; p.manualOnly = !!state.manualOnly;
+        saveState();
+      }
+    };
+    const _rc = renderCompare;
+    renderCompare = function () {
+      _rc();
+      const cards = document.querySelectorAll('#pk-plans-list > div');
+      if (cards.length !== state.savedPlans.length) return;
+      state.savedPlans.forEach((p, i) => {
+        if (p.estShare == null) return;
+        const d = document.createElement('div');
+        d.style.cssText = 'font-size:11px;font-weight:700;color:' + (p.estShare > 0 ? '#b45309' : '#047857');
+        d.textContent = p.estShare > 0 ? `⚠️ 此方案約 ${p.estShare}% 為估算價` : '✓ 此方案全為實查價';
+        cards[i].insertBefore(d, cards[i].querySelector('button[data-action="load-plan"]'));
+      });
+    };
+
+    // ---------- 4. 復原機制 ----------
+    let lastSnap = null;
+    function showUndo(msg) {
+      const el = $('toast'); if (!el) return;
+      el.innerHTML = `<span>${esc(msg)}</span> <button type="button" data-action="undo-last" style="margin-left:10px;background:#f59e0b;color:#111;border:0;border-radius:8px;padding:6px 14px;font-weight:800;font-size:13px;">復原</button>`;
+      el.classList.remove('hidden'); clearTimeout(window._toastTimer);
+      window._toastTimer = setTimeout(() => el.classList.add('hidden'), 7000);
+    }
+    function doUndo() {
+      if (!lastSnap) return;
+      state = JSON.parse(lastSnap); lastSnap = null; saveState(); renderAll(); showToast('↩️ 已復原');
+    }
+    const UNDO = {
+      'clear-plans': '已清空比較方案', 'del-plan': '已刪除方案', 'del-day': '已刪除該天', 'del-itin': '已刪除行程節點',
+      'del-pkg': '已移除項目', 'del-pack': '已刪除物品', 'del-phrase': '已刪除字卡', 'reset-app': '已重設為預設值',
+      'set-style': '已重新產生行程', 'set-stay': '已切換住宿方式', 'flex-shift': '已套用新日期', 'save-trip-settings': '已更新旅程條件',
+      'add-pkg': '已加入一日遊', 'load-plan': '已載入方案', 'pm-manual': '已清除估算價', 'pm-restore': '已恢復估算參考', 'copy-prev-day': '已複製行程'
+    };
+    function isItinEdited() {
+      const d = getDest(), cur = state.itineraries[d.id];
+      if (!Array.isArray(cur)) return false;
+      try { return JSON.stringify(cur) !== JSON.stringify(buildItinerary(d, state.bloggerStyle)); } catch (e) { return false; }
+    }
+    function hasRealQuote() {
+      const q = state.quotes[state.destId] || {};
+      return (Number(q.flight) > 0 && !q.flightEst) || (Number(q.hotelNight) > 0 && !q.hotelEst);
+    }
+
+    document.addEventListener('click', e => {
+      const btn = e.target.closest('[data-action]'); if (!btn || !state) return;
+      const act = btn.getAttribute('data-action'), stop = () => e.stopImmediatePropagation();
+      if (act === 'undo-last') { stop(); doUndo(); return; }
+      const q = state.quotes[state.destId];
+
+      if (act === 'reset-app' && !confirm('確定重設？所有價格、行程、比較方案、行李與緊急資訊都會清空。\n（清空後 7 秒內可按「復原」找回）')) { stop(); return; }
+      if (act === 'clear-plans' && state.savedPlans.length && !confirm(`確定清空 ${state.savedPlans.length} 個比較方案？`)) { stop(); return; }
+      if ((act === 'set-style' || act === 'set-stay') && isItinEdited() && !confirm('切換後會重新產生每日行程，你手動編輯過的內容將被覆蓋。\n要繼續嗎？（之後仍可按「復原」）')) { stop(); return; }
+      if (act === 'flex-shift' && hasRealQuote() && !confirm('套用新日期後，你已填的機票/住宿實查價會被清除（價格依日期而變，需重新查價）。\n要繼續嗎？')) { stop(); return; }
+      if (act === 'save-trip-settings') {
+        const s = $('set-start').value, en = $('set-end').value;
+        if (s && en && en > s && dayDiff(en, s) + 1 !== getDuration().days && isItinEdited() && !confirm('改變旅程天數會重新產生行程，你手動編輯過的內容將被覆蓋。\n要繼續嗎？')) { stop(); return; }
+      }
+      if (act === 'add-pkg' && q && q.addedPackages.some(x => x.id === btn.getAttribute('data-id'))) { stop(); showToast('這個一日遊已經加入過了'); return; }
+      if (act === 'del-pkg') {
+        const ap = q.addedPackages[Number(btn.getAttribute('data-idx'))];
+        if (ap) getItinerary().forEach(d => { d.items = d.items.filter(x => x.place !== `【一日遊】${ap.title}`); });
+      }
+      if (act === 'pick-flight' || act === 'apply-flight-avg') q.flightEst = true;
+      if (act === 'pick-hotel' || act === 'apply-hotel-avg') q.hotelEst = true;
+
+      if (act === 'exp-csv' && !state.savedPlans.length) { stop(); showToast('還沒有比較方案，請先按「＋ 存目前方案」'); return; }
+      if (act === 'exp-json') { state.lastBackupAt = Date.now(); saveState(); setTimeout(renderHome, 50); }
+
+      if (act === 'load-plan') {
+        stop();
+        const p = state.savedPlans.find(x => x.id === btn.getAttribute('data-id')); if (!p) return;
+        const before = JSON.stringify(state);
+        Object.assign(state, { destId: p.destId, origin: p.origin, startDate: p.startDate, endDate: p.endDate, adults: p.adults, children: p.children });
+        if (p.quote) state.quotes[p.destId] = clone(p.quote);
+        saveState(); switchView('budget');
+        lastSnap = before; showUndo(p.quote ? `已載入 ${p.region}（含當時的價格）` : `已載入 ${p.region} 的條件（舊版方案未存價格，請重新填寫）`);
+        return;
+      }
+      if (act === 'pm-manual') {
+        stop();
+        if (!confirm('這會清空所有目的地的機票與住宿估算價（含分段換宿預設房價），改為只計入你親自填的實查價；未填的項目先算 0。\n確定嗎？')) return;
+        const before = JSON.stringify(state);
+        Object.values(state.quotes).forEach(x => {
+          x.flight = ''; x.flightNote = ''; x.flightEst = false; x.hotelNight = ''; x.hotelNote = ''; x.hotelEst = false;
+          (x.splitLegs || []).forEach(l => { l.pricePerNight = 0; l.est = false; });
+        });
+        state.manualOnly = true; saveState(); renderAll(); lastSnap = before; showUndo('已改為僅用我填的實查價');
+        return;
+      }
+      if (act === 'pm-restore') {
+        stop(); const before = JSON.stringify(state);
+        state.manualOnly = false; saveState(); renderAll(); lastSnap = before; showUndo('已恢復估算參考（先前清除的價格不會自動回來）');
+        return;
+      }
+
+      if (UNDO[act]) {
+        const before = JSON.stringify(state);
+        setTimeout(() => { if (JSON.stringify(state) !== before) { lastSnap = before; showUndo(UNDO[act]); } }, 0);
+      }
+    }, true);
+
+    // 輸入實查價 → 不再視為估算
+    document.addEventListener('input', e => {
+      if (!state) return; const q = state.quotes[state.destId];
+      if (e.target.id === 'in-flight-price') q.flightEst = false;
+      if (e.target.id === 'in-hotel-price') q.hotelEst = false;
+    }, true);
+    document.addEventListener('change', e => {
+      if (!state) return; const t = e.target;
+      if (t.getAttribute && t.getAttribute('data-leg-field') === 'pricePerNight') {
+        const l = state.quotes[state.destId].splitLegs[Number(t.getAttribute('data-leg-idx'))]; if (l) l.est = false;
+      }
+      // 安全匯入備份：驗證格式、完整合併、先確認
+      if (t.id === 'in-import-json') {
+        e.stopImmediatePropagation();
+        const f = t.files && t.files[0]; if (!f) return;
+        const r = new FileReader();
+        r.onload = ev => {
+          try {
+            const p = JSON.parse(ev.target.result);
+            if (!p || typeof p !== 'object' || !DESTINATIONS.some(d => d.id === p.destId)) throw new Error('bad');
+            if (!confirm('匯入會取代這支手機上目前的所有資料，確定嗎？（之後可按「復原」）')) return;
+            const before = JSON.stringify(state), base = createDefaultState(), quotes = { ...base.quotes };
+            Object.keys(quotes).forEach(k => { if (p.quotes && p.quotes[k]) quotes[k] = { ...quotes[k], ...p.quotes[k] }; });
+            state = {
+              ...base, ...p, quotes,
+              rates: { ...base.rates, ...(p.rates || {}) }, emg: { ...base.emg, ...(p.emg || {}) },
+              itineraries: (p.itineraries && typeof p.itineraries === 'object') ? p.itineraries : {},
+              packDone: (p.packDone && typeof p.packDone === 'object') ? p.packDone : {},
+              savedPlans: Array.isArray(p.savedPlans) ? p.savedPlans : [],
+              customPacks: Array.isArray(p.customPacks) ? p.customPacks : [],
+              customPhrases: Array.isArray(p.customPhrases) ? p.customPhrases : []
+            };
+            saveState(); renderAll(); lastSnap = before; showUndo('✓ 備份還原成功');
+          } catch (err) { showToast('備份檔格式不正確，沒有變更任何資料'); }
+        };
+        r.readAsText(f); t.value = '';
+        $('sheet-more-menu').classList.add('hidden');
+      }
+    }, true);
+
+    // 請瀏覽器盡量保留資料（對加到主畫面的 App 特別有幫助）
+    window.addEventListener('load', () => { try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch (e) {} });
+    window.addEventListener('pagehide', () => { try { saveState(); } catch (e) {} });
+    window.__tpUndo = { set: v => { lastSnap = v; }, show: showUndo };
+  })();
+  </script>
+
+  <script>
+  /* ===== v4：預估交通時間、時間衝突提醒、出發前健檢、複製行程 ===== */
+  (function () {
+    'use strict';
+    const $ = id => document.getElementById(id);
+    const DISPERSED = ['cn-northeast', 'cn-southwest', 'jp-hokkaido', 'jp-kyushu', 'jp-okinawa'];
+    const toMin = t => { const m = /^(\d{1,2}):(\d{2})$/.exec(String(t || '').trim()); return m ? (+m[1]) * 60 + (+m[2]) : null; };
+    const toHHMM = n => { n = Math.max(0, Math.min(1439, Math.round(n))); return String(Math.floor(n / 60)).padStart(2, '0') + ':' + String(n % 60).padStart(2, '0'); };
+    const isTour = it => /一日遊|局部套裝/.test(it.place || '');
+
+    // 停留與交通：有填就用你填的；沒填才用「預設估算」（不是即時路況）
+    function stayOf(it) {
+      if (Number(it.dur) > 0) return { v: Number(it.dur), est: false };
+      const p = it.place || ''; let v = 90;
+      if (isTour(it)) v = 480;
+      else if (/餐|拉麵|早茶|美食|壽司|丼|燒肉|火鍋|咖啡|下午茶|甜點|市場/.test(p)) v = 60;
+      else if (/Check-in|退房|寄放|抵達|機場|採買|伴手禮/.test(p)) v = 45;
+      return { v, est: true };
+    }
+    function travelOf(it, first) {
+      if (it.travel !== undefined && it.travel !== '' && it.travel !== null && !isNaN(Number(it.travel))) return { v: Math.max(0, Number(it.travel)), est: false };
+      if (first || isTour(it)) return { v: 0, est: true };
+      return { v: /機場/.test(it.place || '') ? 60 : (DISPERSED.includes(state.destId) ? 40 : 30), est: true };
+    }
+
+    function analyzeDay(day) {
+      const rows = day.items.map((it, idx) => ({ it, idx, t: toMin(it.time) }))
+        .filter(r => r.it.prio !== 'backup' && r.t !== null).sort((a, b) => a.t - b.t || a.idx - b.idx);
+      const out = { rows, list: [], issue: {}, travelTotal: 0 };
+      const flag = (r, level, msg) => {
+        out.list.push({ level, msg, r });
+        if (!out.issue[r.idx] || level === 'error') out.issue[r.idx] = { level, msg };
+      };
+      rows.forEach((r, i) => {
+        r.stay = stayOf(r.it); r.tr = travelOf(r.it, i === 0); r.end = r.t + r.stay.v;
+        if (i > 0) {
+          const prev = rows[i - 1]; r.prev = prev; out.travelTotal += r.tr.v;
+          r.slack = r.t - (prev.end + r.tr.v);
+          if (r.t === prev.t) flag(r, 'error', `與「${prev.it.place}」排在同一時間`);
+          else if (r.slack < 0) flag(r, 'error', `從「${prev.it.place}」過來還差 ${-r.slack} 分（停留 ${prev.stay.v} + 交通 ${r.tr.v}）`);
+          else if (r.slack < 15) flag(r, 'warn', `銜接很趕，只剩 ${r.slack} 分緩衝`);
+        }
+      });
+      if (rows.length) {
+        if (rows[0].t < 360) flag(rows[0], 'warn', `${toHHMM(rows[0].t)} 就出發，確認有交通工具`);
+        const last = rows[rows.length - 1];
+        if (last.end > 1380) flag(last, 'warn', `預計 ${toHHMM(last.end)} 才結束，注意末班車`);
+      }
+      return out;
+    }
+
+    function decorate() {
+      const itin = getItinerary(), city = getDest().cityZh;
+      if (!$('tp-tools')) {
+        const tip = $('itin-blogger-tip'); if (tip) {
+          const d = document.createElement('div'); d.id = 'tp-tools'; d.className = 'row-wrap'; d.style.marginTop = '8px';
+          d.innerHTML = '<button type="button" class="m-btn m-btn-sm btn-sky" data-action="tp-copy">📋 複製行程文字（可貼 LINE）</button>';
+          tip.insertAdjacentElement('afterend', d);
+        }
+      }
+      document.querySelectorAll('#itin-days-list .feed-day').forEach((art, dIdx) => {
+        const day = itin[dIdx]; if (!day) return;
+        const a = analyzeDay(day), top = art.querySelector('.feed-day-top'); if (!top) return;
+        const errs = a.list.filter(x => x.level === 'error').length;
+        const box = document.createElement('div');
+        box.className = 'tp-sum ' + (errs ? 'bad' : (a.list.length ? 'warn' : 'ok'));
+        const span = a.rows.length ? `${toHHMM(a.rows[0].t)}～${toHHMM(a.rows[a.rows.length - 1].end)}` : '尚無時間';
+        box.innerHTML = `<strong>⏱ ${span} ・ ${a.rows.length} 站 ・ 預估交通合計約 ${a.travelTotal} 分</strong>
+          ${a.list.length ? `<ul>${a.list.map(x => `<li>${esc(x.r.it.time)} ${esc(x.r.it.place)}：${esc(x.msg)}</li>`).join('')}</ul>` : '<div>✓ 這天的時間安排看起來合理</div>'}
+          ${errs ? `<button type="button" class="m-btn m-btn-xs btn-amber" style="margin-top:6px;" data-action="tp-fix-day" data-day="${dIdx}">🔧 一鍵順延，排開衝突</button>` : ''}
+          <div style="font-size:11px;opacity:.8;margin-top:4px;">標「估」的停留與交通是預設估算，請在「✏️ 編輯」填入實際分鐘會更準。</div>`;
+        top.insertAdjacentElement('afterend', box);
+
+        art.querySelectorAll('.post-card').forEach(card => {
+          const eb = card.querySelector('[data-action="open-itin-edit"][data-idx]'); if (!eb) return;
+          const idx = Number(eb.getAttribute('data-idx')), it = day.items[idx]; if (!it) return;
+          const chip = document.createElement('div'); chip.className = 'tp-chip';
+          const row = a.rows.find(r => r.idx === idx);
+          if (!row) { chip.textContent = it.prio === 'backup' ? '⏳ 備用景點，不計入時間檢查' : '⚠️ 時間格式不正確，未納入檢查'; }
+          else {
+            const iss = a.issue[idx];
+            chip.innerHTML = `<span>⏱ 停留 ${row.stay.v} 分${row.stay.est ? '（估）' : ''}</span>` +
+              (row.prev ? `<span>🚇 從上一站約 ${row.tr.v} 分${row.tr.est ? '（估）' : ''}</span>
+                <a href="https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(city + ' ' + row.prev.it.place)}&destination=${encodeURIComponent(city + ' ' + it.place)}&travelmode=transit" target="_blank" rel="noopener">查實際交通 ↗</a>` : '') +
+              (iss ? `<span class="${iss.level === 'error' ? 'bad' : 'warn'}">${iss.level === 'error' ? '⛔' : '⚠️'} ${esc(iss.msg)}</span>` : '');
+          }
+          card.appendChild(chip);
+        });
+      });
+    }
+    const _ri = renderItinerary;
+    renderItinerary = function () { _ri(); decorate(); };
+
+    // 編輯視窗新增「停留時間 / 交通時間」欄位
+    (function addFields() {
+      const place = $('edit-itin-place'); if (!place || $('edit-itin-stay')) return;
+      const g = document.createElement('div'); g.className = 'grid-2col';
+      g.innerHTML = `<div><label class="m-label">停留時間（分）</label><input type="number" id="edit-itin-stay" min="0" max="1440" class="m-input mono" /></div>
+        <div><label class="m-label">從上一站交通（分）</label><input type="number" id="edit-itin-travel" min="0" max="600" class="m-input mono" /></div>`;
+      place.parentElement.insertAdjacentElement('beforebegin', g);
+    })();
+    const _open = openItinEditSheet;
+    openItinEditSheet = function (d, i, p) {
+      _open(d, i, p);
+      const it = (getItinerary()[d] || {}).items?.[i] || null, probe = it || { place: '' };
+      const st = $('edit-itin-stay'), tr = $('edit-itin-travel');
+      st.value = it && Number(it.dur) > 0 ? it.dur : ''; st.placeholder = `預設約 ${stayOf(probe).v}`;
+      tr.value = it && it.travel !== undefined && it.travel !== '' ? it.travel : ''; tr.placeholder = `預設約 ${travelOf(probe, false).v}`;
+    };
+    const _save = saveItinEditSheet;
+    saveItinEditSheet = function () {
+      const { dayIdx, itemIdx } = editTarget;
+      _save();
+      if (!$('sheet-itin-edit').classList.contains('hidden')) return;
+      const items = getItinerary()[dayIdx].items, it = itemIdx < 0 ? items[items.length - 1] : items[itemIdx];
+      if (!it) return;
+      const st = $('edit-itin-stay').value, tr = $('edit-itin-travel').value;
+      if (Number(st) > 0) it.dur = Number(st); else delete it.dur;
+      if (tr !== '' && !isNaN(Number(tr))) it.travel = Math.max(0, Number(tr)); else delete it.travel;
+      saveState(); renderItinerary();
+    };
+
+    // ---------- 文字版行程（複製 / 匯出） ----------
+    function buildText(withBudget) {
+      const b = calcBudget(), itin = getItinerary(), L = [];
+      L.push(`【${b.dest.region} 行程】`, `${state.startDate} ~ ${state.endDate}（${b.days}天${b.nights}夜）・${state.adults}大${state.children}小`);
+      if (withBudget) L.push(`預算：全團約 NT$ ${b.grandTotal.toLocaleString()}／人均 NT$ ${b.perPerson.toLocaleString()}（${b.estShare > 0 ? '約 ' + b.estShare + '% 為估算價，非即時報價' : '皆為實查價'}）${b.buffer ? `，已含 ${state.bufferPct}% 預備金 NT$ ${b.buffer.toLocaleString()}` : ''}`);
+      itin.forEach((d, i) => {
+        const dt = new Date(shiftDate(state.startDate, i) + 'T00:00:00');
+        L.push('', `▎Day ${i + 1}  ${dt.getMonth() + 1}/${dt.getDate()}（${WEEKDAYS[dt.getDay()].slice(1)}）${d.title.replace(/^Day \d+ · /, '')}`);
+        const a = analyzeDay(d);
+        a.rows.forEach(r => L.push(`  ${r.it.time} ${r.it.place}${r.prev ? `（交通約${r.tr.v}分${r.tr.est ? '・估' : ''}）` : ''}${r.it.prio === 'must' ? ' ★' : ''}${r.it.note ? ' — ' + r.it.note : ''}`));
+        d.items.filter(x => x.prio === 'backup').forEach(x => L.push(`  ⏳備用：${x.place}`));
+        a.list.filter(x => x.level === 'error').forEach(x => L.push(`  ⛔ ${x.r.it.time} ${x.msg}`));
+      });
+      return L.join('\n');
+    }
+    async function copyText(t) {
+      try { await navigator.clipboard.writeText(t); return true; } catch (e) {}
+      try { const ta = document.createElement('textarea'); ta.value = t; ta.style.cssText = 'position:fixed;opacity:0'; document.body.appendChild(ta); ta.select(); const ok = document.execCommand('copy'); ta.remove(); return ok; } catch (e) { return false; }
+    }
+
+    document.addEventListener('click', async e => {
+      const btn = e.target.closest('[data-action]'); if (!btn || !state) return;
+      const act = btn.getAttribute('data-action');
+      if (act === 'tp-copy') { e.stopImmediatePropagation(); showToast((await copyText(buildText(false))) ? '✓ 已複製行程文字，可貼到 LINE' : '複製失敗，請改用匯出文字檔'); return; }
+      if (act === 'exp-txt') {
+        e.stopImmediatePropagation();
+        dlFile(`旅遊離線攻略_${getDest().cityZh}.txt`, buildText(true), 'text/plain;charset=utf-8');
+        $('sheet-more-menu').classList.add('hidden'); return;
+      }
+      if (act === 'tp-fix-day') {
+        e.stopImmediatePropagation();
+        const d = Number(btn.getAttribute('data-day')), before = JSON.stringify(state), day = getItinerary()[d];
+        const a = analyzeDay(day); let prevEnd = null, over = false;
+        a.rows.forEach((r, i) => {
+          if (i > 0) { const need = prevEnd + r.tr.v + 15; if (need > toMin(r.it.time)) { const nt = Math.ceil(need / 5) * 5; if (nt > 1439) over = true; r.it.time = toHHMM(nt); r.it.period = periodOf(r.it.time); } }
+          prevEnd = toMin(r.it.time) + r.stay.v;
+        });
+        saveState(); renderItinerary(); renderHome();
+        if (window.__tpUndo) { window.__tpUndo.set(before); window.__tpUndo.show(over ? `已順延 Day ${d + 1}，但已排到深夜，建議把部分景點改為「備用」` : `已順延排開 Day ${d + 1} 的時間衝突`); }
+      }
+    }, true);
+
+    // ---------- 出發前健檢（首頁） ----------
+    function parseExpiry(s) { const m = /(\d{4})\s*[\/\-年.]\s*(\d{1,2})/.exec(s || ''); return m ? new Date(+m[1], +m[2], 0) : null; }
+    function checks() {
+      const L = [], b = calcBudget(), e = state.emg || {};
+      let err = 0, warn = 0;
+      getItinerary().forEach(d => analyzeDay(d).list.forEach(x => x.level === 'error' ? err++ : warn++));
+      if (err) L.push({ lv: 'bad', t: `行程有 ${err} 處時間衝突`, tab: 'itinerary' });
+      else if (warn) L.push({ lv: 'warn', t: `行程有 ${warn} 處銜接很趕或時段偏極端`, tab: 'itinerary' });
+      if (b.flightEst) L.push({ lv: 'warn', t: '機票仍是估算價，建議查價後填入', tab: 'budget' });
+      if (b.hotelEst) L.push({ lv: 'warn', t: '住宿仍是估算價，建議查價後填入', tab: 'budget' });
+      if (!e.hotelAddr) L.push({ lv: 'warn', t: '尚未填飯店地址（司機字卡會用到）', tab: 'toolkit' });
+      if (!e.contact) L.push({ lv: 'warn', t: '尚未填緊急聯絡人', tab: 'toolkit' });
+      const ex = parseExpiry(e.expiry);
+      if (e.expiry && !ex) L.push({ lv: 'warn', t: '證件到期日格式看不懂，建議寫成 2030/08', tab: 'toolkit' });
+      if (ex) {
+        const back = new Date(state.endDate + 'T00:00:00'), six = new Date(back); six.setMonth(six.getMonth() + 6);
+        if (ex < back) L.push({ lv: 'bad', t: '證件在回程日前就到期，請先換發', tab: 'toolkit' });
+        else if (ex < six) L.push({ lv: 'warn', t: '證件效期在回程後不到 6 個月，部分航空或入境規定會要求，建議確認', tab: 'toolkit' });
+      }
+      return L;
+    }
+    function renderCheck() {
+      const home = $('view-home'); if (!home) return;
+      let c = $('home-check');
+      if (!c) { c = document.createElement('section'); c.id = 'home-check'; c.className = 'hx-card'; home.insertBefore(c, $('home-extra') ? $('home-extra').nextSibling : home.firstChild); }
+      const L = checks(); c.className = 'hx-card ' + (L.some(x => x.lv === 'bad') ? 'warn' : (L.length ? 'info' : 'ok'));
+      c.innerHTML = `<div class="hx-title">🔎 出發前健檢</div>` + (L.length
+        ? L.map(x => `<div class="row-between" style="padding:7px 0;border-top:1px dashed var(--border);cursor:pointer;" data-action="go-tab" data-tab="${x.tab}"><span style="font-size:13px;font-weight:700;">${x.lv === 'bad' ? '⛔' : '⚠️'} ${esc(x.t)}</span><span class="pill pill-gray">去處理 ➔</span></div>`).join('')
+        : '<div class="hx-sub">✓ 目前沒有待處理項目。</div>');
+    }
+    const _rh = renderHome;
+    renderHome = function () { _rh(); renderCheck(); };
+  })();
+  </script>
+
+  <script>
+  /* ===== v5：預算 10% 預備金開關、行程依實際日期顯示天氣 ===== */
+  (function () {
+    'use strict';
+    const $ = id => document.getElementById(id);
+    const fmt = n => Number(n || 0).toLocaleString();
+    const BUF = 10;
+
+    // ---------- 預算預備金 ----------
+    const _calc = calcBudget;
+    calcBudget = function () {
+      const b = _calc(), pct = Number(state.bufferPct) || 0;
+      b.baseTotal = b.grandTotal;
+      b.buffer = pct > 0 ? Math.round(b.grandTotal * pct / 100) : 0;
+      if (b.buffer) { b.grandTotal += b.buffer; b.perPerson = Math.round(b.grandTotal / Math.max(1, b.pax)); }
+      return b;
+    };
+    function renderBuffer() {
+      const mini = $('b-breakdown-mini'); if (!mini) return;
+      const b = calcBudget(), on = b.buffer > 0;
+      if (on) mini.insertAdjacentHTML('beforeend', `<div class="row-between"><span style="color:#cbd5e1;">🛟 預備金 ${state.bufferPct}%</span><strong class="mono">NT$ ${fmt(b.buffer)}</strong></div>`);
+      let row = $('b-buffer-row');
+      if (!row) {
+        row = document.createElement('div'); row.id = 'b-buffer-row'; row.className = 'row-between';
+        row.style.cssText = 'margin-top:10px;padding-top:8px;border-top:1px solid #334155;font-size:12px;gap:10px;';
+        row.innerHTML = '<span id="b-buffer-label" style="color:#cbd5e1;line-height:1.5;"></span><button type="button" id="b-buffer-btn" data-action="bf-toggle"></button>';
+        mini.insertAdjacentElement('afterend', row);
+      }
+      $('b-buffer-label').textContent = on ? `🛟 已含 ${state.bufferPct}% 預備金（匯率波動、臨時花費）` : '🛟 目前未含預備金，建議加 10% 以防超支';
+      const btn = $('b-buffer-btn');
+      btn.className = 'm-btn m-btn-xs ' + (on ? 'btn-ghost' : 'btn-green');
+      btn.textContent = on ? '關閉' : `加 ${BUF}% 預備金`;
+    }
+    const _rb = renderBudget;
+    renderBudget = function () { _rb(); renderBuffer(); };
+
+    const _rh = renderHome;
+    renderHome = function () {
+      _rh();
+      const b = calcBudget(), v = $('home-kpi-budget');
+      if (b.buffer && v && v.previousElementSibling) v.previousElementSibling.textContent += ' ・含預備金';
+    };
+    const _scp = saveCurrentPlan;
+    saveCurrentPlan = function () {
+      const n = state.savedPlans.length; _scp();
+      if (state.savedPlans.length > n) { state.savedPlans[0].bufferPct = Number(state.bufferPct) || 0; saveState(); }
+    };
+    const _rc = renderCompare;
+    renderCompare = function () {
+      _rc();
+      const cards = document.querySelectorAll('#pk-plans-list > div');
+      if (cards.length !== state.savedPlans.length) return;
+      state.savedPlans.forEach((p, i) => {
+        const d = document.createElement('div');
+        d.style.cssText = 'font-size:11px;font-weight:700;color:#475569;';
+        d.textContent = p.bufferPct ? `🛟 已含 ${p.bufferPct}% 預備金` : '🛟 未含預備金';
+        cards[i].insertBefore(d, cards[i].querySelector('button[data-action="load-plan"]'));
+      });
+    };
+    document.addEventListener('click', e => {
+      const btn = e.target.closest('[data-action="bf-toggle"]'); if (!btn || !state) return;
+      e.stopImmediatePropagation();
+      state.bufferPct = Number(state.bufferPct) > 0 ? 0 : BUF;
+      saveState(); renderAll();
+      showToast(state.bufferPct ? `✓ 已加入 ${BUF}% 預備金` : '已關閉預備金');
+    }, true);
+
+    // ---------- 行程每日天氣 ----------
+    function cachedWx() {
+      try { return (JSON.parse(localStorage.getItem(WEATHER_KEY) || '{}'))[state.destId] || null; } catch (e) { return null; }
+    }
+    function dayWx(wx, iso) {
+      const t = wx && wx.daily && wx.daily.time; if (!t) return null;
+      const i = t.indexOf(iso); if (i < 0) return null;
+      const g = k => (wx.daily[k] || [])[i];
+      return { min: Math.round(g('temperature_2m_min')), max: Math.round(g('temperature_2m_max')), pop: g('precipitation_probability_max') };
+    }
+    function decorateWx() {
+      const wx = cachedWx(), dest = getDest();
+      const days = [...document.querySelectorAll('#itin-days-list .feed-day')];
+      let have = 0;
+      days.forEach((art, i) => {
+        const w = dayWx(wx, shiftDate(state.startDate, i)), top = art.querySelector('.feed-day-top'); if (!w || !top) return;
+        have++;
+        const tips = [];
+        if (w.min <= 0) tips.push('❄️ 低於冰點，路面可能結冰，穿防滑鞋、暖暖包');
+        else if (w.min <= 8) tips.push('🧥 偏冷，備保暖外套');
+        if (w.max >= 30) tips.push('☀️ 偏熱，防曬與補水');
+        if (w.pop != null && w.pop >= 60) tips.push('🌧 降雨機率高，帶雨具並備室內備案');
+        const box = document.createElement('div'); box.className = 'tp-wx';
+        box.innerHTML = `🌤 <strong>預報 ${w.min}°～${w.max}°C${w.pop != null ? ` ・ 降雨機率 ${w.pop}%` : ''}</strong>${tips.length ? `<small>${tips.join('　')}</small>` : ''}`;
+        top.insertAdjacentElement('afterend', box);
+      });
+      let st = $('tp-wx-status');
+      if (!st) {
+        const tools = $('tp-tools') || $('itin-blogger-tip'); if (!tools) return;
+        st = document.createElement('div'); st.id = 'tp-wx-status'; st.style.cssText = 'font-size:11px;color:var(--text-mute);margin-top:6px;width:100%;';
+        tools.insertAdjacentElement('afterend', st);
+      }
+      const when = wx && wx.ts ? new Date(wx.ts).toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+      st.innerHTML = have
+        ? `🌤 已顯示 ${have} 天預報（資料更新於 ${when}）。預報會變動，出發前再更新一次。 <a href="#" data-action="refresh-wx" style="color:var(--sky);font-weight:800;">↻ 更新</a>`
+        : `🌡 這趟日期還沒有預報（最多提前約 16 天；離線時也只會用上次快取）。月均溫參考：${esc(dest.climate.temp)}。 <a href="#" data-action="refresh-wx" style="color:var(--sky);font-weight:800;">↻ 更新</a>`;
+    }
+    const _ri = renderItinerary;
+    renderItinerary = function () { _ri(); decorateWx(); };
+
+    const _lw = loadWeather;
+    loadWeather = async function (force) { await _lw(force); if (state.tab === 'itinerary') renderItinerary(); };
+    const _sv = switchView;
+    switchView = function (t) { _sv(t); if (t === 'itinerary') loadWeather(false); };
+    document.addEventListener('click', e => { const a = e.target.closest('a[data-action]'); if (a) e.preventDefault(); }, true);
+  })();
   </script>
 </body>
 </html>
